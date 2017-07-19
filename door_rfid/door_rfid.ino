@@ -1,3 +1,36 @@
+/*
+ * Bu kod YTU IEEE Kapı otomasyon sistemi için yazılmıştır.
+ * 
+ * Sistem Dosyaları:
+ * ID.txt:
+ *  Bu dosya kullanıcı Id'lerini saklar. 
+ * devId.txt:
+ *  Bu dosya odaya başkalarının girişini kapatma yetkisi olan kişileri tutar
+ * locker.txt:
+ *  Bu dosya odaya başkalarının girişini kapatan kişiyi tutar
+ *  
+ *  Sistem kullanımı:
+ *  
+ *  Kullanıcı ekleme:
+ *    Master Kart 1 kez okutulur. Sistem master moda geçer. Master mod açıkken eklenmek istenen kartlar okutulur. Okutulan kartlar kaydedilir. 
+ *    İşlem bittiğinde master mod kapatılarak tekrar normal kullanıma dönülür.
+ *  Kullanıcı silme:
+ *    Master kart 1 kez okutulur. Sistem master moda geçer. Master mod açıkken sililmesini istenen kartlar 3 kez art arda okutulur. Okunan kartlar silinir. 
+ *    İşlem bittiğinde master mod kapatılarak tekrar normal kullanıma dönülür.
+ *  Oturum açma:
+ *    Kayıtlı kullanıcı kartını 1 kez okutarak oturum açar.Kapı 5 saniye boyunca açık kalır daha sonra kitlenir. Kayıtlı başka bir kişi kartını tekrar okutana 
+ *    kadar oturum açık kalır. Oturum açık iken kapıdaki butona basılarak kapı açılabilir. Oturum kapalıyken buton ile kapı açılmaz. 
+ *  Odayı diğer kullanıcıların girişine kapatma:
+ *    Bu özelliği kullanmak için devID.txt dosyasına ID manuel olarak eklenmeli. Yetkili kişi kartını kapıya 6 kez okutursa kapıyı sadece bu kullanıcı açabilir.  
+ *    Oda, bu kullanıcı tekrar kartını okutana kadar açılmaz. 
+ *   !!Geliştirici uyarıları!!:
+ *   
+ *    Kullanıcı eklerken veya silerken kart eklenme uyarısı geldiğinde master moddan çıkın ve tekrar girin. 
+ *    Sistem Sd kart okunana kadar başlamaz. Sd kart okunduğunda uyarı ışığı bir süre yanıp söner.
+ *    
+ *   
+ */
+
 #define doorPin 2
 #define LED_Pin 10
 #define buttonPin A3
@@ -14,14 +47,15 @@
 File SD_File;
 RFID rfid(RFID_CS,RFID_RST); 
 
-String masterID = "1317827188106";
-String lockerID = "";
-boolean masterAuthorization = false;
-boolean doorState = false;
-boolean newId = false; 
-String lastID = "";
-int idCounter = 0;
-boolean doorLockedFromSomeone = false;
+
+String masterID = "1317827188106";//Master Card ID'si (Master Kartı değiştirmek için sadece bu id'nin değişmesi yeterli
+String lockerID = "";//Oda girişini başkalarına kitleyen kişi
+boolean masterAuthorization = false;// Master kartın okunduğunu ve kişi ekleme çıkarma moduna girdiğini gösterir
+boolean doorState = false;// Kapının bir kişi tarafından açıldığını ve kapının kartsız açılabildiğini gösterir
+boolean newId = false; //Kartın sürekli okunmaması için gereken bir değişken
+String lastID = "";// Okunan karttan önceki kartın numarasıdır. Kartın art arda okunup okunmadığını anlamak için vardır.
+int idCounter = 0;// Bir kartın art arda kaç deva okunduğunu sayar
+boolean doorLockedFromSomeone = false;// Oda girişlerinin herkese kapandığını gösterir
 
 void setup() {
   pinMode(doorPin,OUTPUT);
@@ -52,7 +86,7 @@ void setup() {
 }
 
 void loop() {
-   String ID = readRFID();
+   String ID = readRFID();// Kartı okutan kişinin ID'si
    digitalWrite(LED_Pin, doorState);
    
    boolean buttonState = digitalRead(buttonPin);
@@ -88,6 +122,9 @@ void loop() {
       if(masterAuthorization){
           if(!scanId(ID)){
             addId(ID);
+            saveLog("ID", "ekleme isteği");
+            alertSound(1,100,0);
+            idCounter = 0;
           }
           else{
             switch(idCounter){
@@ -103,6 +140,7 @@ void loop() {
                 break;
               case 2:
                 saveLog(ID,"Silme istegi");
+                idCounter = 0;
                 deleteId(ID);
                 break;
             }
@@ -117,6 +155,7 @@ void loop() {
               changeLockerState();
               doorLockedFromSomeone = false;
               saveLog(ID,"Oda izinleri tekrar acildi, Kapi acildi");
+              idCounter = 0;
               alertSound(3,300,300);
               unlockDoor();
             }
@@ -158,7 +197,7 @@ void loop() {
           alertSound(3,500,300);
         }
         else if(idCounter>7){
-          saveLog(ID, "Kaybol burdan gozum gormesin");
+          saveLog(ID, "Burayi terk et");
           alertSound(3,2000,500);
         }
         else{
@@ -202,7 +241,6 @@ boolean addId( String ID ){
   if (SD_File) {
     SD_File.println(ID);
     saveLog("ID", "eklendi");
-    alertSound(1,100,0);
     SD_File.close();
     return true;
   } 
@@ -331,8 +369,10 @@ boolean changeLockerState(){
 void alertSound(byte amount, int delayTime_H,int delayTime_L){
   for( byte a = 0; a<amount; a++){
     digitalWrite(buzzer,HIGH);
+    digitalWrite(LED_Pin,HIGH);
     delay(delayTime_H);
     digitalWrite(buzzer,LOW);
+    digitalWrite(LED_Pin,LOW);
     delay(delayTime_L);
   }
   delay(100);
